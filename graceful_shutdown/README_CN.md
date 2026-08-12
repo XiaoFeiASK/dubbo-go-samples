@@ -9,7 +9,7 @@
 - 长连接消费者的主动通知
 - 消费端在停机期间的被动关闭表现
 - Provider 停机时对进行中请求的等待与排空
-- `timeout`、`step-timeout`、`consumer-update-wait` 和 `offline-window` 等参数的影响
+- `timeout`、`step-timeout`、`notify-timeout`、`consumer-update-wait` 和 `offline-window` 等参数的影响
 
 该示例**不包含注册中心**。因此你可以验证协议层的主动通知和请求排空行为，但不能直接观察“从注册中心摘除并传播”的完整链路。
 
@@ -62,6 +62,7 @@ go run ./graceful_shutdown/go-client/cmd -addr=tri://127.0.0.1:20000 -concurrenc
 - `-port=20000`
 - `-timeout=60s`
 - `-step-timeout=3s`
+- `-notify-timeout=5s`
 - `-consumer-update-wait=3s`
 - `-offline-window=3s`
 - `-delay=0s`
@@ -197,7 +198,7 @@ go run ./graceful_shutdown/go-client/cmd -addr=tri://127.0.0.1:20000 -short=true
 ./integrate_test.sh graceful_shutdown
 ```
 
-脚本会启动 Triple 服务端，后台运行客户端，在观察到至少一次成功请求后向服务端发送中断信号，并要求客户端在退出前同时观察到：
+脚本会启动 Triple 服务端，后台运行长连接客户端，在观察到至少一次成功请求后向服务端发送中断信号，并要求客户端在退出前同时观察到：
 
 - 至少一次成功请求
 - 至少一次停机期间的失败请求
@@ -207,4 +208,5 @@ go run ./graceful_shutdown/go-client/cmd -addr=tri://127.0.0.1:20000 -short=true
 ## 补充说明
 
 - 该示例以 Triple 协议为主，用于聚焦当前优雅停机流程中的主动通知路径。
+- 服务端通过 `dubbo.WithShutdown(...)` 配置优雅停机，这是当前 API 使用的实例级公开配置方式。
 - 因为没有注册中心，这里只能覆盖协议层停机行为，不能完整覆盖注册中心摘除传播。

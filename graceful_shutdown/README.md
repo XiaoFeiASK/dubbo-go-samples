@@ -8,7 +8,7 @@ It is useful for verifying these behaviors:
 - active notice for long connections on Triple
 - passive closing behavior on the consumer side
 - waiting for in-flight provider requests during shutdown
-- the effect of `timeout`, `step-timeout`, `consumer-update-wait`, and `offline-window`
+- the effect of `timeout`, `step-timeout`, `notify-timeout`, `consumer-update-wait`, and `offline-window`
 
 This sample does **not** include a registry. That means you can test protocol-level active notice and request draining, but you cannot directly observe registry unregister propagation in this sample alone.
 
@@ -58,6 +58,7 @@ If you omit the protocol prefix and only pass `127.0.0.1:20000`, the direct refe
 - `-port=20000`
 - `-timeout=60s`
 - `-step-timeout=3s`
+- `-notify-timeout=5s`
 - `-consumer-update-wait=3s`
 - `-offline-window=3s`
 - `-delay=0s`
@@ -179,7 +180,7 @@ This sample is wired into the root integration test flow:
 ./integrate_test.sh graceful_shutdown
 ```
 
-The script starts the Triple server, runs the client in the background, waits until at least one request succeeds, and then sends an interrupt signal to trigger graceful shutdown.
+The script starts the Triple server, runs a long-connection client in the background, waits until at least one request succeeds, and then sends an interrupt signal to trigger graceful shutdown.
 
 Before the client exits, it must observe:
 
@@ -192,4 +193,5 @@ If those expectations are not met, the client panics so CI fails immediately.
 
 - Triple is the intended protocol for manual verification in this sample.
 - This sample is intentionally Triple-only so it focuses on the active notice path implemented in the current graceful shutdown flow.
+- The server configures graceful shutdown through `dubbo.WithShutdown(...)`, which is the public instance-level configuration path used by the current API.
 - Because this sample has no registry, the "unregister from registry" phase is only part of the core implementation flow, not something you can fully observe here.

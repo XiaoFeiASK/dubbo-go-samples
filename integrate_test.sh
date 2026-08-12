@@ -637,14 +637,13 @@ run_graceful_shutdown_sample() {
     return 1
   fi
 
-  echo "Running graceful_shutdown Go client..."
+  echo "Running graceful_shutdown Go client with a long connection..."
   (
     cd "$P_DIR"
     exec "$client_bin" \
       -addr=tri://127.0.0.1:20000 \
       -concurrency=2 \
       -interval=200ms \
-      -short \
       -request-timeout=6s \
       -max-requests=12 \
       -min-successes=1 \
