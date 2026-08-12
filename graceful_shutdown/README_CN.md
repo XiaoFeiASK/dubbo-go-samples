@@ -198,7 +198,7 @@ go run ./graceful_shutdown/go-client/cmd -addr=tri://127.0.0.1:20000 -short=true
 ./integrate_test.sh graceful_shutdown
 ```
 
-脚本会启动 Triple 服务端，并运行包含两个请求的长连接客户端。在第一个请求已经进入 Provider 后，脚本向服务端发送中断信号以触发优雅停机。
+脚本会启动 Triple 服务端，并运行一个包含单个进行中请求的长连接客户端。在该请求已经进入 Provider 后，脚本向服务端发送中断信号以触发优雅停机，然后再启动另一个客户端验证新请求会被拒绝。
 
 - 停机开始后，第一个进行中的请求仍能成功完成
 - 停机开始后，后续的新请求会失败

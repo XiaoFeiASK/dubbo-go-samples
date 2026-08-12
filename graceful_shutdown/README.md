@@ -180,7 +180,7 @@ This sample is wired into the root integration test flow:
 ./integrate_test.sh graceful_shutdown
 ```
 
-The script starts the Triple server and runs a long-connection client with two requests. After the first request has entered the provider, it sends an interrupt signal to trigger graceful shutdown.
+The script starts the Triple server and runs a long-connection client with one in-flight request. After that request has entered the provider, it sends an interrupt signal to trigger graceful shutdown and then starts another client to verify that new work is rejected.
 
 The integration asserts that:
 

@@ -46,15 +46,7 @@ func (p *GreetProvider) Greet(ctx context.Context, req *greet.GreetRequest) (*gr
 	logger.Infof("Handling greet request, name=%s delay=%s", req.Name, p.fixedDelay)
 
 	if p.fixedDelay > 0 {
-		timer := time.NewTimer(p.fixedDelay)
-		defer timer.Stop()
-
-		select {
-		case <-timer.C:
-		case <-ctx.Done():
-			logger.Warnf("Greet request canceled before completion, name=%s err=%v", req.Name, ctx.Err())
-			return nil, ctx.Err()
-		}
+		time.Sleep(p.fixedDelay)
 	}
 
 	resp := &greet.GreetResponse{
