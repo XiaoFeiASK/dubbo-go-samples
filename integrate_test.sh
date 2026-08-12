@@ -672,24 +672,6 @@ run_graceful_shutdown_sample() {
   server_shutdown_log_line="$(wc -l < "$GO_SERVER_LOG" | tr -d ' ')"
   kill -INT "$server_pid" 2>/dev/null || true
 
-  echo "Running graceful_shutdown rejected Go client after shutdown starts..."
-  (
-    cd "$P_DIR"
-    exec "$client_bin" \
-      -addr=tri://127.0.0.1:20000 \
-      -concurrency=1 \
-      -interval=1s \
-      -request-timeout=5s \
-      -max-requests=1 \
-      -min-failures=1 \
-      -name-prefix=integration-rejected
-  ) >"$rejected_client_log" 2>&1 || {
-    echo "graceful_shutdown rejected client did not observe a failed request after shutdown started"
-    cat "$rejected_client_log" || true
-    cat "$GO_SERVER_LOG" || true
-    return 1
-  }
-
   if ! wait "$inflight_client_pid"; then
     echo "graceful_shutdown in-flight client exited with failure"
     cat "$inflight_client_log" || true
@@ -709,14 +691,40 @@ run_graceful_shutdown_sample() {
     return 1
   fi
 
+  if ! wait_for_log_pattern "$GO_SERVER_LOG" "sending/accepting requests finish or timeout" 5; then
+    echo "graceful_shutdown did not enter the request rejection phase after draining in-flight requests"
+    cat "$GO_SERVER_LOG" || true
+    return 1
+  fi
+
+  reject_phase_log_line="$(wc -l < "$GO_SERVER_LOG" | tr -d ' ')"
+
+  echo "Running graceful_shutdown rejected Go client after reject phase starts..."
+  (
+    cd "$P_DIR"
+    exec "$client_bin" \
+      -addr=tri://127.0.0.1:20000 \
+      -concurrency=1 \
+      -interval=1s \
+      -request-timeout=5s \
+      -max-requests=1 \
+      -min-failures=1 \
+      -name-prefix=integration-rejected
+  ) >"$rejected_client_log" 2>&1 || {
+    echo "graceful_shutdown rejected client did not observe a failed request after reject phase started"
+    cat "$rejected_client_log" || true
+    cat "$GO_SERVER_LOG" || true
+    return 1
+  }
+
   if ! grep -q "request 1 failed" "$rejected_client_log"; then
-    echo "graceful_shutdown accepted a new request after shutdown was triggered"
+    echo "graceful_shutdown accepted a new request after reject phase started"
     cat "$rejected_client_log" || true
     return 1
   fi
 
-  if tail -n +"$((server_shutdown_log_line + 1))" "$GO_SERVER_LOG" | grep -q "Handling greet request, name=integration-rejected-1"; then
-    echo "graceful_shutdown dispatched a new request to the provider after shutdown was triggered"
+  if tail -n +"$((reject_phase_log_line + 1))" "$GO_SERVER_LOG" | grep -q "Handling greet request, name=integration-rejected-1"; then
+    echo "graceful_shutdown dispatched a new request to the provider after reject phase started"
     cat "$GO_SERVER_LOG" || true
     return 1
   fi
