@@ -180,14 +180,15 @@ This sample is wired into the root integration test flow:
 ./integrate_test.sh graceful_shutdown
 ```
 
-The script starts the Triple server, runs a long-connection client in the background, waits until at least one request succeeds, and then sends an interrupt signal to trigger graceful shutdown.
+The script starts the Triple server and runs a long-connection client with two requests. After the first request has entered the provider, it sends an interrupt signal to trigger graceful shutdown.
 
-Before the client exits, it must observe:
+The integration asserts that:
 
-- at least one successful request
-- at least one failed request during shutdown
+- the in-flight first request completes successfully after shutdown starts
+- the next request is rejected after shutdown starts
+- the server exits within the configured shutdown timeout
 
-If those expectations are not met, the client panics so CI fails immediately.
+If any expectation is not met, the script exits non-zero so CI fails immediately.
 
 ## Practical Notes
 

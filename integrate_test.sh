@@ -600,6 +600,8 @@ run_graceful_shutdown_sample() {
   local client_pid=""
   local server_bin="/tmp/.${PROJECT_NAME}.go-server.bin"
   local client_bin="/tmp/.${PROJECT_NAME}.go-client.bin"
+  local shutdown_log_line=""
+  local server_shutdown_log_line=""
 
   if command -v lsof >/dev/null 2>&1; then
     lsof -tiTCP:20000 -sTCP:LISTEN | xargs -r kill -9 || true
@@ -620,7 +622,7 @@ run_graceful_shutdown_sample() {
   echo "Starting graceful_shutdown Go server..."
   (
     cd "$P_DIR"
-    exec "$server_bin" -timeout=15s -step-timeout=2s -consumer-update-wait=0s -delay=2s
+    exec "$server_bin" -timeout=25s -step-timeout=12s -consumer-update-wait=0s -offline-window=0s -delay=10s
   ) >"$GO_SERVER_LOG" 2>&1 &
   server_pid="$!"
   echo "$server_pid" >"$PID_FILE"
@@ -642,24 +644,32 @@ run_graceful_shutdown_sample() {
     cd "$P_DIR"
     exec "$client_bin" \
       -addr=tri://127.0.0.1:20000 \
-      -concurrency=2 \
-      -interval=200ms \
-      -request-timeout=6s \
-      -max-requests=12 \
+      -concurrency=1 \
+      -interval=1s \
+      -request-timeout=15s \
+      -max-requests=2 \
       -min-successes=1 \
       -min-failures=1 \
       -name-prefix=integration
   ) >"$client_log" 2>&1 &
   client_pid="$!"
 
-  if ! wait_for_log_pattern "$client_log" "succeeded" 30; then
-    echo "graceful_shutdown client did not observe a successful request before shutdown"
+  if ! wait_for_log_pattern "$GO_SERVER_LOG" "Handling greet request, name=integration-1" 30; then
+    echo "graceful_shutdown server did not begin the in-flight request before shutdown"
     cat "$client_log" || true
     cat "$GO_SERVER_LOG" || true
     return 1
   fi
 
+  if grep -q "Greet request finished, name=integration-1" "$GO_SERVER_LOG"; then
+    echo "graceful_shutdown first request finished before shutdown was triggered"
+    cat "$GO_SERVER_LOG" || true
+    return 1
+  fi
+
   echo "Triggering graceful shutdown..."
+  shutdown_log_line="$(wc -l < "$client_log" | tr -d ' ')"
+  server_shutdown_log_line="$(wc -l < "$GO_SERVER_LOG" | tr -d ' ')"
   kill -INT "$server_pid" 2>/dev/null || true
 
   if ! wait "$client_pid"; then
@@ -677,8 +687,20 @@ run_graceful_shutdown_sample() {
 
   wait "$server_pid" 2>/dev/null || true
 
-  if ! grep -q "failed" "$client_log"; then
-    echo "graceful_shutdown client did not observe request failures during shutdown"
+  if ! tail -n +"$((server_shutdown_log_line + 1))" "$GO_SERVER_LOG" | grep -q "Greet request finished, name=integration-1"; then
+    echo "graceful_shutdown did not finish the in-flight request after shutdown was triggered"
+    cat "$GO_SERVER_LOG" || true
+    return 1
+  fi
+
+  if ! tail -n +"$((shutdown_log_line + 1))" "$client_log" | grep -q "request 1 succeeded"; then
+    echo "graceful_shutdown client did not receive the in-flight response after shutdown was triggered"
+    cat "$client_log" || true
+    return 1
+  fi
+
+  if ! tail -n +"$((shutdown_log_line + 1))" "$client_log" | grep -q "request 2 failed"; then
+    echo "graceful_shutdown accepted a new request after shutdown was triggered"
     cat "$client_log" || true
     return 1
   fi
