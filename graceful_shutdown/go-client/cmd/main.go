@@ -47,10 +47,20 @@ func main() {
 	maxRequests := flag.Int64("max-requests", 0, "maximum number of requests to issue across all workers, 0 means unlimited")
 	minSuccesses := flag.Int64("min-successes", 0, "minimum number of successful requests required before exit")
 	minFailures := flag.Int64("min-failures", 0, "minimum number of failed requests required before exit")
+	scenario := flag.String("scenario", "", "optional integration scenario to run, supported: graceful-shutdown")
 	flag.Parse()
 
 	logger.Infof("Starting client, addr=%s short=%v concurrency=%d interval=%s request-timeout=%s",
 		*addr, *shortConn, *concurrency, interval.String(), requestTimeout.String())
+	if *scenario != "" {
+		switch *scenario {
+		case "graceful-shutdown":
+			runGracefulShutdownScenario(*addr, *shortConn, *requestTimeout, *namePrefix)
+		default:
+			panic(fmt.Sprintf("unsupported scenario: %s", *scenario))
+		}
+		return
+	}
 
 	var requestCounter atomic.Int64
 	var successCount atomic.Int64
@@ -72,6 +82,51 @@ func main() {
 		validateRequestSummary(*minSuccesses, successes, *minFailures, failures)
 		logger.Infof("Client finished, requests=%d successes=%d failures=%d", requestCounter.Load(), successes, failures)
 	}
+}
+
+func runGracefulShutdownScenario(addr string, shortConn bool, requestTimeout time.Duration, namePrefix string) {
+	var svc greet.GreetService
+	var err error
+
+	if !shortConn {
+		_, svc, err = newGreetClient(addr)
+		if err != nil {
+			panic(fmt.Sprintf("failed to create long connection client: %v", err))
+		}
+	}
+
+	firstName := fmt.Sprintf("%s-1", namePrefix)
+	if _, err := invokeGreet(svc, addr, shortConn, requestTimeout, firstName); err != nil {
+		panic(fmt.Sprintf("expected in-flight request to succeed during graceful shutdown, got: %v", err))
+	}
+	logger.Infof("Graceful shutdown scenario in-flight request succeeded, name=%s", firstName)
+
+	time.Sleep(200 * time.Millisecond)
+	secondName := fmt.Sprintf("%s-2", namePrefix)
+	if _, err := invokeGreet(svc, addr, shortConn, requestTimeout, secondName); err == nil {
+		panic("expected new request after graceful shutdown to fail, but it succeeded")
+	} else {
+		logger.Infof("Graceful shutdown scenario new request failed as expected, name=%s err=%v", secondName, err)
+	}
+
+	logger.Info("Graceful shutdown scenario passed")
+}
+
+func invokeGreet(svc greet.GreetService, addr string, shortConn bool, requestTimeout time.Duration, name string) (*greet.GreetResponse, error) {
+	if shortConn {
+		var err error
+		_, svc, err = newGreetClient(addr)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if svc == nil {
+		return nil, fmt.Errorf("greet service is not initialized")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	defer cancel()
+	return svc.Greet(ctx, &greet.GreetRequest{Name: name})
 }
 
 func runWorker(workerID int, addr string, interval time.Duration, shortConn bool, requestTimeout time.Duration, namePrefix string, maxRequests int64, requestCounter, successCount, failureCount *atomic.Int64) {

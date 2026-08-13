@@ -66,8 +66,11 @@ go run ./graceful_shutdown/go-client/cmd -addr=tri://127.0.0.1:20000 -concurrenc
 - `-consumer-update-wait=3s`
 - `-offline-window=3s`
 - `-delay=0s`
+- `-ignore-context-cancel=false`
+- `-shutdown-on-first-greet=false`
 
 其中 `-delay` 会给每次请求增加固定处理延迟，用于观察停机时的在途请求排空效果。
+`-ignore-context-cancel` 和 `-shutdown-on-first-greet` 用于自动化集成测试场景。
 
 ## 客户端参数
 
@@ -82,10 +85,12 @@ go run ./graceful_shutdown/go-client/cmd -addr=tri://127.0.0.1:20000 -concurrenc
 - `-max-requests=0`
 - `-min-successes=0`
 - `-min-failures=0`
+- `-scenario=`
 
 长连接验证时建议保持 `-short=false`。
 
 其中 `-max-requests`、`-min-successes`、`-min-failures` 主要用于自动化测试。如果客户端在退出前没有达到这些最小阈值，会直接 `panic`，从而让集成测试失败。
+`-scenario=graceful-shutdown` 会运行内置集成测试断言：第一个进行中请求必须成功，停机后的下一个请求必须失败。
 
 ## 推荐场景
 
@@ -198,13 +203,13 @@ go run ./graceful_shutdown/go-client/cmd -addr=tri://127.0.0.1:20000 -short=true
 ./integrate_test.sh graceful_shutdown
 ```
 
-脚本会启动 Triple 服务端，并运行一个包含单个进行中请求的长连接客户端。在该请求已经进入 Provider 后，脚本向服务端发送中断信号以触发优雅停机，然后再启动另一个客户端验证新请求会被拒绝。
+脚本会使用内置集成测试参数启动 Triple 服务端，然后运行 Go 客户端的 `-scenario=graceful-shutdown` 场景。服务端会在第一个请求进入 Provider 后触发优雅停机，客户端会在代码中验证行为是否符合预期。
 
 - 停机开始后，第一个进行中的请求仍能成功完成
 - 停机开始后，后续的新请求会失败
 - 服务端会在配置的停机超时时间内退出
 
-任一条件不满足时，脚本会以非零状态退出，使 CI 立即失败。
+任一条件不满足时，客户端会直接 `panic`，使 CI 立即失败。
 
 ## 补充说明
 

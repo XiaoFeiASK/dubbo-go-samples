@@ -62,8 +62,11 @@ If you omit the protocol prefix and only pass `127.0.0.1:20000`, the direct refe
 - `-consumer-update-wait=3s`
 - `-offline-window=3s`
 - `-delay=0s`
+- `-ignore-context-cancel=false`
+- `-shutdown-on-first-greet=false`
 
 `-delay` adds artificial processing delay to every request so you can verify in-flight request draining.
+`-ignore-context-cancel` and `-shutdown-on-first-greet` are used by the automated integration scenario.
 
 ## Client Flags
 
@@ -77,10 +80,12 @@ If you omit the protocol prefix and only pass `127.0.0.1:20000`, the direct refe
 - `-max-requests=0`
 - `-min-successes=0`
 - `-min-failures=0`
+- `-scenario=`
 
 For long-connection testing, keep `-short=false`.
 
 `-max-requests`, `-min-successes`, and `-min-failures` are mainly for automated verification. The client panics if the configured minimum counts are not reached before exit.
+`-scenario=graceful-shutdown` runs the built-in integration assertion: the first in-flight request must succeed, and the next request after shutdown must fail.
 
 ## Recommended Scenarios
 
@@ -180,7 +185,7 @@ This sample is wired into the root integration test flow:
 ./integrate_test.sh graceful_shutdown
 ```
 
-The script starts the Triple server and runs a long-connection client with one in-flight request. After that request has entered the provider, it sends an interrupt signal to trigger graceful shutdown and then starts another client to verify that new work is rejected.
+The script starts the Triple server with the built-in integration flags and then runs `-scenario=graceful-shutdown` in the Go client. The server triggers graceful shutdown after the first request enters the provider, and the client verifies the expected behavior in code.
 
 The integration asserts that:
 
@@ -188,7 +193,7 @@ The integration asserts that:
 - the next request is rejected after shutdown starts
 - the server exits within the configured shutdown timeout
 
-If any expectation is not met, the script exits non-zero so CI fails immediately.
+If any expectation is not met, the client panics so CI fails immediately.
 
 ## Practical Notes
 
