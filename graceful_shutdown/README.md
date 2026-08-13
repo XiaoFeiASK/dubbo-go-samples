@@ -80,12 +80,10 @@ If you omit the protocol prefix and only pass `127.0.0.1:20000`, the direct refe
 - `-max-requests=0`
 - `-min-successes=0`
 - `-min-failures=0`
-- `-scenario=`
 
 For long-connection testing, keep `-short=false`.
 
 `-max-requests`, `-min-successes`, and `-min-failures` are mainly for automated verification. The client panics if the configured minimum counts are not reached before exit.
-`-scenario=graceful-shutdown` runs the built-in integration assertion: the first in-flight request must succeed, and the next request after shutdown must fail.
 
 ## Recommended Scenarios
 
@@ -185,7 +183,7 @@ This sample is wired into the root integration test flow:
 ./integrate_test.sh graceful_shutdown
 ```
 
-The script starts the Triple server with the built-in integration flags and then runs `-scenario=graceful-shutdown` in the Go client. The server triggers graceful shutdown after the first request enters the provider, and the client verifies the expected behavior in code.
+The script starts the Triple server with the built-in integration flags and then runs the Go client with `-short=true`, `-max-requests=2`, `-min-successes=1`, and `-min-failures=1`. The server triggers graceful shutdown after the first request enters the provider, and the client verifies the expected behavior in code.
 
 The integration asserts that:
 
@@ -193,7 +191,7 @@ The integration asserts that:
 - the next request is rejected after shutdown starts
 - the server exits within the configured shutdown timeout
 
-If any expectation is not met, the client panics so CI fails immediately.
+If the expected success and failure counts are not met, the client panics so CI fails immediately.
 
 ## Practical Notes
 

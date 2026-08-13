@@ -121,14 +121,14 @@ func main() {
 		),
 	)
 	if err != nil {
-		logger.Fatalf("failed to create dubbo instance: %v", err)
+		panic(fmt.Sprintf("failed to create dubbo instance: %v", err))
 	}
 	logger.Infof("Graceful shutdown configured, timeout=%s step-timeout=%s notify-timeout=%s consumer-update-wait=%s offline-window=%s request-delay=%s ignore-context-cancel=%v shutdown-on-first-greet=%v",
 		timeout.String(), stepTimeout.String(), notifyTimeout.String(), consumerUpdateWait.String(), offlineWindow.String(), requestDelay.String(), *ignoreContextCancel, *shutdownOnFirstGreet)
 
 	srv, err := ins.NewServer()
 	if err != nil {
-		logger.Fatalf("failed to create server: %v", err)
+		panic(fmt.Sprintf("failed to create server: %v", err))
 	}
 	logger.Infof("Exposing Triple on port %d", *port)
 
@@ -138,12 +138,12 @@ func main() {
 		shutdownOnFirstGreet: *shutdownOnFirstGreet,
 	}
 	if err := greet.RegisterGreetServiceHandler(srv, provider); err != nil {
-		logger.Fatalf("failed to register greet service handler: %v", err)
+		panic(fmt.Sprintf("failed to register greet service handler: %v", err))
 	}
 
 	logger.Info("Triple server started, press Ctrl+C to trigger graceful shutdown")
 
 	if err := srv.Serve(); err != nil {
-		logger.Fatalf("failed to serve: %v", err)
+		panic(fmt.Sprintf("failed to serve: %v", err))
 	}
 }

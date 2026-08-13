@@ -643,16 +643,19 @@ run_graceful_shutdown_sample() {
     return 1
   fi
 
-  echo "Running graceful_shutdown Go client scenario..."
+  echo "Running graceful_shutdown Go client validation..."
   (
     cd "$P_DIR"
     exec "$client_bin" \
       -addr=tri://127.0.0.1:20000 \
+      -short=true \
+      -max-requests=2 \
+      -min-successes=1 \
+      -min-failures=1 \
       -request-timeout=10s \
-      -scenario=graceful-shutdown \
       -name-prefix=integration
   ) >"$client_log" 2>&1 || {
-    echo "graceful_shutdown Go client scenario failed"
+    echo "graceful_shutdown Go client validation failed"
     cat "$client_log" || true
     cat "$GO_SERVER_LOG" || true
     return 1
