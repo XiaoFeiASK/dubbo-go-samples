@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -32,11 +33,9 @@ import (
 	_ "dubbo.apache.org/dubbo-go/v3/imports"
 	"dubbo.apache.org/dubbo-go/v3/protocol"
 
-	"github.com/dubbogo/gost/log/logger"
-)
-
-import (
 	greet "github.com/apache/dubbo-go-samples/graceful_shutdown/proto"
+
+	"github.com/dubbogo/gost/log/logger"
 )
 
 type GreetProvider struct {
@@ -44,9 +43,15 @@ type GreetProvider struct {
 	ignoreContextCancel  bool
 	shutdownOnFirstGreet bool
 	shutdownOnce         sync.Once
+	shuttingDown         atomic.Bool
 }
 
 func (p *GreetProvider) Greet(ctx context.Context, req *greet.GreetRequest) (*greet.GreetResponse, error) {
+	if p.shuttingDown.Load() {
+		logger.Warnf("Rejecting greet request during graceful shutdown, name=%s", req.Name)
+		return nil, fmt.Errorf("provider is shutting down")
+	}
+
 	start := time.Now()
 	logger.Infof("Handling greet request, name=%s delay=%s", req.Name, p.fixedDelay)
 	p.triggerShutdownOnFirstGreet()
@@ -82,6 +87,7 @@ func (p *GreetProvider) triggerShutdownOnFirstGreet() {
 	p.shutdownOnce.Do(func() {
 		go func() {
 			time.Sleep(200 * time.Millisecond)
+			p.shuttingDown.Store(true)
 			proc, err := os.FindProcess(os.Getpid())
 			if err != nil {
 				panic(fmt.Sprintf("failed to find current process for shutdown trigger: %v", err))
