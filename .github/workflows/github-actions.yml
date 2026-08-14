@@ -66,7 +66,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$GITHUB_EVENT_NAME" == "pull_request" ]; then
-            BRANCH=${{ github.base_ref }}
+            BRANCH=b3adb3362ae7a1f90db43f8575c1664203c1f134
           elif [ "$GITHUB_EVENT_NAME" == "push" ]; then
             BRANCH=$GITHUB_REF_NAME
           else

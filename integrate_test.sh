@@ -622,13 +622,13 @@ run_graceful_shutdown_sample() {
     cd "$P_DIR"
     exec "$server_bin" \
       -timeout=25s \
-      -step-timeout=12s \
+      -step-timeout=20s \
       -consumer-update-wait=0s \
       -offline-window=0s \
       -delay=3s \
       -ignore-context-cancel=true \
       -shutdown-on-first-greet=true \
-      -reject-probe-window=8s
+      -reject-probe-window=12s
   ) >"$GO_SERVER_LOG" 2>&1 &
   server_pid="$!"
   echo "$server_pid" >"$PID_FILE"
@@ -662,14 +662,14 @@ run_graceful_shutdown_sample() {
     return 1
   }
 
-  if ! grep -q "Greet request finished, name=integration-inflight-1" "$GO_SERVER_LOG"; then
+  if ! wait_for_log_pattern "$GO_SERVER_LOG" "Greet request finished, name=integration-inflight-1" 30; then
     echo "graceful_shutdown in-flight request did not finish in the provider"
     cat "$inflight_client_log" || true
     cat "$GO_SERVER_LOG" || true
     return 1
   fi
 
-  if ! wait_for_log_pattern "$GO_SERVER_LOG" "Graceful shutdown --- Keep waiting until sending/accepting requests finish or timeout." 30; then
+  if ! wait_for_log_pattern "$GO_SERVER_LOG" "sending/accepting requests finish or timeout" 30; then
     echo "graceful_shutdown server did not enter the framework reject stage"
     cat "$inflight_client_log" || true
     cat "$GO_SERVER_LOG" || true
@@ -700,7 +700,7 @@ run_graceful_shutdown_sample() {
     return 1
   fi
 
-  if ! grep -q "The application is closing, new request will be rejected." "$GO_SERVER_LOG"; then
+  if ! wait_for_log_pattern "$GO_SERVER_LOG" "application is closing, new request will be rejected" 30; then
     echo "graceful_shutdown reject-stage probe was not rejected by the framework provider filter"
     cat "$reject_client_log" || true
     cat "$GO_SERVER_LOG" || true

@@ -19,8 +19,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -167,7 +169,7 @@ func main() {
 
 	logger.Info("Triple server started, press Ctrl+C to trigger graceful shutdown")
 
-	if err := srv.Serve(); err != nil {
+	if err := srv.Serve(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		panic(fmt.Sprintf("failed to serve: %v", err))
 	}
 }
