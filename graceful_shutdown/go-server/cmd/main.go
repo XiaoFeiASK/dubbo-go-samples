@@ -30,11 +30,9 @@ import (
 
 import (
 	"dubbo.apache.org/dubbo-go/v3"
-	"dubbo.apache.org/dubbo-go/v3/global"
 	"dubbo.apache.org/dubbo-go/v3/graceful_shutdown"
 	_ "dubbo.apache.org/dubbo-go/v3/imports"
 	"dubbo.apache.org/dubbo-go/v3/protocol"
-	"dubbo.apache.org/dubbo-go/v3/server"
 
 	"github.com/dubbogo/gost/log/logger"
 )
@@ -47,9 +45,7 @@ type GreetProvider struct {
 	fixedDelay           time.Duration
 	ignoreContextCancel  bool
 	shutdownOnFirstGreet bool
-	rejectProbeWindow    time.Duration
 	shutdownOnce         sync.Once
-	shutdownConfig       *global.ShutdownConfig
 }
 
 func (p *GreetProvider) Greet(ctx context.Context, req *greet.GreetRequest) (*greet.GreetResponse, error) {
@@ -88,7 +84,6 @@ func (p *GreetProvider) triggerShutdownOnFirstGreet() {
 	p.shutdownOnce.Do(func() {
 		go func() {
 			time.Sleep(200 * time.Millisecond)
-			p.holdRejectProbeWindow()
 			proc, err := os.FindProcess(os.Getpid())
 			if err != nil {
 				panic(fmt.Sprintf("failed to find current process for shutdown trigger: %v", err))
@@ -101,20 +96,6 @@ func (p *GreetProvider) triggerShutdownOnFirstGreet() {
 	})
 }
 
-func (p *GreetProvider) holdRejectProbeWindow() {
-	if p.rejectProbeWindow <= 0 || p.shutdownConfig == nil {
-		return
-	}
-
-	p.shutdownConfig.ConsumerActiveCount.Inc()
-	logger.Infof("Holding graceful shutdown reject stage for integration probe, window=%s", p.rejectProbeWindow)
-	go func() {
-		time.Sleep(p.rejectProbeWindow)
-		p.shutdownConfig.ConsumerActiveCount.Dec()
-		logger.Info("Released graceful shutdown reject stage integration probe window")
-	}()
-}
-
 func main() {
 	port := flag.Int("port", 20000, "triple listen port")
 	timeout := flag.Duration("timeout", 60*time.Second, "overall graceful shutdown timeout budget")
@@ -125,19 +106,16 @@ func main() {
 	requestDelay := flag.Duration("delay", 0, "artificial delay added to each greet request")
 	ignoreContextCancel := flag.Bool("ignore-context-cancel", false, "continue the artificial delay even if the request context is canceled")
 	shutdownOnFirstGreet := flag.Bool("shutdown-on-first-greet", false, "trigger graceful shutdown after the first greet request enters the provider")
-	rejectProbeWindow := flag.Duration("reject-probe-window", 0, "keep the framework reject stage open long enough for an integration probe")
 	flag.Parse()
 
-	shutdownConfig := graceful_shutdown.NewOptions(
-		graceful_shutdown.WithTimeout(*timeout),
-		graceful_shutdown.WithStepTimeout(*stepTimeout),
-		graceful_shutdown.WithNotifyTimeout(*notifyTimeout),
-		graceful_shutdown.WithConsumerUpdateWaitTime(*consumerUpdateWait),
-		graceful_shutdown.WithOfflineRequestWindowTimeout(*offlineWindow),
-	).Shutdown
-
 	ins, err := dubbo.NewInstance(
-		dubbo.WithShutdown(graceful_shutdown.SetShutdownConfig(shutdownConfig)),
+		dubbo.WithShutdown(
+			graceful_shutdown.WithTimeout(*timeout),
+			graceful_shutdown.WithStepTimeout(*stepTimeout),
+			graceful_shutdown.WithNotifyTimeout(*notifyTimeout),
+			graceful_shutdown.WithConsumerUpdateWaitTime(*consumerUpdateWait),
+			graceful_shutdown.WithOfflineRequestWindowTimeout(*offlineWindow),
+		),
 		dubbo.WithProtocol(
 			protocol.WithProtocol("tri"),
 			protocol.WithPort(*port),
@@ -147,10 +125,10 @@ func main() {
 	if err != nil {
 		panic(fmt.Sprintf("failed to create dubbo instance: %v", err))
 	}
-	logger.Infof("Graceful shutdown configured, timeout=%s step-timeout=%s notify-timeout=%s consumer-update-wait=%s offline-window=%s request-delay=%s ignore-context-cancel=%v shutdown-on-first-greet=%v reject-probe-window=%s",
-		timeout.String(), stepTimeout.String(), notifyTimeout.String(), consumerUpdateWait.String(), offlineWindow.String(), requestDelay.String(), *ignoreContextCancel, *shutdownOnFirstGreet, rejectProbeWindow.String())
+	logger.Infof("Graceful shutdown configured, timeout=%s step-timeout=%s notify-timeout=%s consumer-update-wait=%s offline-window=%s request-delay=%s ignore-context-cancel=%v shutdown-on-first-greet=%v",
+		timeout.String(), stepTimeout.String(), notifyTimeout.String(), consumerUpdateWait.String(), offlineWindow.String(), requestDelay.String(), *ignoreContextCancel, *shutdownOnFirstGreet)
 
-	srv, err := ins.NewServer(server.SetServerShutdown(shutdownConfig))
+	srv, err := ins.NewServer()
 	if err != nil {
 		panic(fmt.Sprintf("failed to create server: %v", err))
 	}
@@ -160,8 +138,6 @@ func main() {
 		fixedDelay:           *requestDelay,
 		ignoreContextCancel:  *ignoreContextCancel,
 		shutdownOnFirstGreet: *shutdownOnFirstGreet,
-		rejectProbeWindow:    *rejectProbeWindow,
-		shutdownConfig:       shutdownConfig,
 	}
 	if err := greet.RegisterGreetServiceHandler(srv, provider); err != nil {
 		panic(fmt.Sprintf("failed to register greet service handler: %v", err))

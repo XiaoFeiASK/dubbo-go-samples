@@ -627,8 +627,7 @@ run_graceful_shutdown_sample() {
       -offline-window=0s \
       -delay=3s \
       -ignore-context-cancel=true \
-      -shutdown-on-first-greet=true \
-      -reject-probe-window=12s
+      -shutdown-on-first-greet=true
   ) >"$GO_SERVER_LOG" 2>&1 &
   server_pid="$!"
   echo "$server_pid" >"$PID_FILE"
