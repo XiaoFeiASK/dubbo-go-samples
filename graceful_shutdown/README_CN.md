@@ -67,10 +67,9 @@ go run ./graceful_shutdown/go-client/cmd -addr=tri://127.0.0.1:20000 -concurrenc
 - `-offline-window=3s`
 - `-delay=0s`
 - `-ignore-context-cancel=false`
-- `-shutdown-on-first-greet=false`
 
 其中 `-delay` 会给每次请求增加固定处理延迟，用于观察停机时的在途请求排空效果。
-`-ignore-context-cancel` 和 `-shutdown-on-first-greet` 用于自动化集成测试场景。
+`-ignore-context-cancel` 用于自动化集成测试场景，使在途请求在停机开始后仍继续执行。
 
 ## 客户端参数
 
@@ -201,13 +200,13 @@ go run ./graceful_shutdown/go-client/cmd -addr=tri://127.0.0.1:20000 -short=true
 ./integrate_test.sh graceful_shutdown
 ```
 
-脚本会使用内置集成测试参数启动 Triple 服务端，然后运行带有 `-short=true`、`-max-requests=2`、`-min-successes=1` 和 `-min-failures=1` 的 Go 客户端。服务端会在第一个请求进入 Provider 后触发优雅停机，客户端会在代码中验证行为是否符合预期。
+脚本会使用内置集成测试参数启动 Triple 服务端，先启动一个在途 Go client 请求，等待该请求进入 Provider 后由脚本发送中断信号触发优雅停机；随后再启动一个独立的短连接探针，验证新请求会被框架拒绝。
 
 - 停机开始后，第一个进行中的请求仍能成功完成
-- 停机开始后，后续的新请求会失败
+- 框架进入拒绝阶段后，独立探针请求会被拒绝
 - 服务端会在配置的停机超时时间内退出
 
-如果预期的成功和失败次数不满足，客户端会直接 `panic`，使 CI 立即失败。
+如果预期的成功和失败次数不满足，或拒绝探针进入了 `Greet` handler，CI 会立即失败。
 
 ## 补充说明
 

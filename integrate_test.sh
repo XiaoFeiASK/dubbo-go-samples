@@ -597,6 +597,7 @@ start_java_server_if_present() {
 run_graceful_shutdown_sample() {
   local inflight_client_log="/tmp/.${PROJECT_NAME}.go-client.inflight.log"
   local reject_client_log="/tmp/.${PROJECT_NAME}.go-client.reject.log"
+  local inflight_client_pid=""
   local server_pid=""
   local server_bin="/tmp/.${PROJECT_NAME}.go-server.bin"
   local client_bin="/tmp/.${PROJECT_NAME}.go-client.bin"
@@ -626,8 +627,7 @@ run_graceful_shutdown_sample() {
       -consumer-update-wait=0s \
       -offline-window=0s \
       -delay=3s \
-      -ignore-context-cancel=true \
-      -shutdown-on-first-greet=true
+      -ignore-context-cancel=true
   ) >"$GO_SERVER_LOG" 2>&1 &
   server_pid="$!"
   echo "$server_pid" >"$PID_FILE"
@@ -654,12 +654,28 @@ run_graceful_shutdown_sample() {
       -min-successes=1 \
       -request-timeout=10s \
       -name-prefix=integration-inflight
-  ) >"$inflight_client_log" 2>&1 || {
+  ) >"$inflight_client_log" 2>&1 &
+  inflight_client_pid="$!"
+
+  if ! wait_for_log_pattern "$GO_SERVER_LOG" "Handling greet request, name=integration-inflight-1" 30; then
+    echo "graceful_shutdown in-flight request did not enter the provider"
+    kill_if_running "$inflight_client_pid"
+    wait "$inflight_client_pid" 2>/dev/null || true
+    cat "$inflight_client_log" || true
+    cat "$GO_SERVER_LOG" || true
+    return 1
+  fi
+
+  echo "Triggering graceful_shutdown after in-flight request entered provider..."
+  kill -INT "$server_pid" 2>/dev/null || true
+
+  if ! wait "$inflight_client_pid"; then
     echo "graceful_shutdown in-flight request validation failed"
     cat "$inflight_client_log" || true
     cat "$GO_SERVER_LOG" || true
     return 1
-  }
+  fi
+  inflight_client_pid=""
 
   if ! wait_for_log_pattern "$GO_SERVER_LOG" "Greet request finished, name=integration-inflight-1" 30; then
     echo "graceful_shutdown in-flight request did not finish in the provider"
