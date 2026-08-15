@@ -63,9 +63,11 @@ If you omit the protocol prefix and only pass `127.0.0.1:20000`, the direct refe
 - `-offline-window=3s`
 - `-delay=0s`
 - `-ignore-context-cancel=false`
+- `-reject-request=false`
 
 `-delay` adds artificial processing delay to every request so you can verify in-flight request draining.
 `-ignore-context-cancel` is used by the automated integration scenario to keep the in-flight request running after shutdown begins.
+`-reject-request` is used by the automated integration scenario to start the framework reject path without relying on the short natural shutdown window.
 
 ## Client Flags
 
@@ -182,12 +184,12 @@ This sample is wired into the root integration test flow:
 ./integrate_test.sh graceful_shutdown
 ```
 
-The script starts the Triple server with the built-in integration flags, starts an in-flight Go client request, waits until that request enters the provider, and then sends an interrupt signal to trigger graceful shutdown. It then runs a separate short-connection probe to verify new requests are rejected by the framework.
+The script validates two behaviors separately. First, it starts the Triple server with the built-in integration flags, starts an in-flight Go client request, waits until that request enters the provider, and then sends an interrupt signal to trigger graceful shutdown. Second, it starts a fresh server with framework request rejection enabled and runs a separate short-connection probe to verify new requests are rejected by the framework.
 
 The integration asserts that:
 
 - the in-flight first request completes successfully after shutdown starts
-- a separate request is rejected after the framework enters the reject stage
+- a separate request is rejected by the framework provider filter without entering the `Greet` handler
 - the server exits within the configured shutdown timeout
 
 If the expected success and failure counts are not met, or if the reject probe reaches the `Greet` handler, CI fails immediately.

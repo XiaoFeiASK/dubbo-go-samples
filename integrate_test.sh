@@ -426,33 +426,6 @@ wait_for_log_pattern() {
   return 1
 }
 
-wait_for_log_pattern_fast() {
-  local log_file="$1"
-  local pattern="$2"
-  local timeout_seconds="$3"
-
-  python3 - "$log_file" "$pattern" "$timeout_seconds" <<'PY'
-import pathlib
-import sys
-import time
-
-log_file = pathlib.Path(sys.argv[1])
-pattern = sys.argv[2]
-deadline = time.monotonic() + float(sys.argv[3])
-
-while time.monotonic() < deadline:
-    if log_file.exists():
-        try:
-            if pattern in log_file.read_text(errors="ignore"):
-                raise SystemExit(0)
-        except OSError:
-            pass
-    time.sleep(0.05)
-
-raise SystemExit(1)
-PY
-}
-
 run_go_client() {
   if ! compgen -G "$P_DIR/go-client/cmd/*.go" >/dev/null; then
     echo "go-client/cmd/*.go not found in $P_DIR"
@@ -696,9 +669,47 @@ run_graceful_shutdown_sample() {
   echo "Triggering graceful_shutdown after in-flight request entered provider..."
   kill -INT "$server_pid" 2>/dev/null || true
 
-  if ! wait_for_log_pattern_fast "$GO_SERVER_LOG" "sending/accepting requests finish or timeout" 30; then
-    echo "graceful_shutdown server did not enter the framework reject stage"
+  if ! wait "$inflight_client_pid"; then
+    echo "graceful_shutdown in-flight request validation failed"
     cat "$inflight_client_log" || true
+    cat "$GO_SERVER_LOG" || true
+    return 1
+  fi
+  inflight_client_pid=""
+
+  if ! wait_for_log_pattern "$GO_SERVER_LOG" "Greet request finished, name=integration-inflight-1" 30; then
+    echo "graceful_shutdown in-flight request did not finish in the provider"
+    cat "$inflight_client_log" || true
+    cat "$GO_SERVER_LOG" || true
+    return 1
+  fi
+
+  if ! wait_for_process_exit "$server_pid" 30; then
+    echo "graceful_shutdown server did not exit within 30s after SIGINT"
+    cat "$GO_SERVER_LOG" || true
+    return 1
+  fi
+
+  wait "$server_pid" 2>/dev/null || true
+  server_pid=""
+  rm -f "$PID_FILE"
+
+  echo "Starting graceful_shutdown reject-stage validation server..."
+  : >"$GO_SERVER_LOG"
+  (
+    cd "$P_DIR"
+    exec "$server_bin" \
+      -timeout=25s \
+      -step-timeout=20s \
+      -consumer-update-wait=0s \
+      -offline-window=0s \
+      -reject-request=true
+  ) >"$GO_SERVER_LOG" 2>&1 &
+  server_pid="$!"
+  echo "$server_pid" >"$PID_FILE"
+
+  if ! wait_for_tcp_port "127.0.0.1" "20000" 30; then
+    echo "graceful_shutdown reject-stage server did not become ready on 127.0.0.1:20000"
     cat "$GO_SERVER_LOG" || true
     return 1
   fi
@@ -734,28 +745,10 @@ run_graceful_shutdown_sample() {
     return 1
   fi
 
-  if ! wait "$inflight_client_pid"; then
-    echo "graceful_shutdown in-flight request validation failed"
-    cat "$inflight_client_log" || true
-    cat "$GO_SERVER_LOG" || true
-    return 1
-  fi
-  inflight_client_pid=""
-
-  if ! wait_for_log_pattern "$GO_SERVER_LOG" "Greet request finished, name=integration-inflight-1" 30; then
-    echo "graceful_shutdown in-flight request did not finish in the provider"
-    cat "$inflight_client_log" || true
-    cat "$GO_SERVER_LOG" || true
-    return 1
-  fi
-
-  if ! wait_for_process_exit "$server_pid" 30; then
-    echo "graceful_shutdown server did not exit within 30s after SIGINT"
-    cat "$GO_SERVER_LOG" || true
-    return 1
-  fi
-
+  kill_if_running "$server_pid"
   wait "$server_pid" 2>/dev/null || true
+  server_pid=""
+  rm -f "$PID_FILE"
 
   echo "graceful_shutdown integration completed"
 }

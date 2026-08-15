@@ -80,16 +80,22 @@ func main() {
 	offlineWindow := flag.Duration("offline-window", 3*time.Second, "time window for observing late requests after offline")
 	requestDelay := flag.Duration("delay", 0, "artificial delay added to each greet request")
 	ignoreContextCancel := flag.Bool("ignore-context-cancel", false, "continue the artificial delay even if the request context is canceled")
+	rejectRequest := flag.Bool("reject-request", false, "start with framework request rejection enabled for integration validation")
 	flag.Parse()
 
+	shutdownOpts := []graceful_shutdown.Option{
+		graceful_shutdown.WithTimeout(*timeout),
+		graceful_shutdown.WithStepTimeout(*stepTimeout),
+		graceful_shutdown.WithNotifyTimeout(*notifyTimeout),
+		graceful_shutdown.WithConsumerUpdateWaitTime(*consumerUpdateWait),
+		graceful_shutdown.WithOfflineRequestWindowTimeout(*offlineWindow),
+	}
+	if *rejectRequest {
+		shutdownOpts = append(shutdownOpts, graceful_shutdown.WithRejectRequest())
+	}
+
 	ins, err := dubbo.NewInstance(
-		dubbo.WithShutdown(
-			graceful_shutdown.WithTimeout(*timeout),
-			graceful_shutdown.WithStepTimeout(*stepTimeout),
-			graceful_shutdown.WithNotifyTimeout(*notifyTimeout),
-			graceful_shutdown.WithConsumerUpdateWaitTime(*consumerUpdateWait),
-			graceful_shutdown.WithOfflineRequestWindowTimeout(*offlineWindow),
-		),
+		dubbo.WithShutdown(shutdownOpts...),
 		dubbo.WithProtocol(
 			protocol.WithProtocol("tri"),
 			protocol.WithPort(*port),
@@ -99,8 +105,8 @@ func main() {
 	if err != nil {
 		panic(fmt.Sprintf("failed to create dubbo instance: %v", err))
 	}
-	logger.Infof("Graceful shutdown configured, timeout=%s step-timeout=%s notify-timeout=%s consumer-update-wait=%s offline-window=%s request-delay=%s ignore-context-cancel=%v",
-		timeout.String(), stepTimeout.String(), notifyTimeout.String(), consumerUpdateWait.String(), offlineWindow.String(), requestDelay.String(), *ignoreContextCancel)
+	logger.Infof("Graceful shutdown configured, timeout=%s step-timeout=%s notify-timeout=%s consumer-update-wait=%s offline-window=%s request-delay=%s ignore-context-cancel=%v reject-request=%v",
+		timeout.String(), stepTimeout.String(), notifyTimeout.String(), consumerUpdateWait.String(), offlineWindow.String(), requestDelay.String(), *ignoreContextCancel, *rejectRequest)
 
 	srv, err := ins.NewServer()
 	if err != nil {
